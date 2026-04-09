@@ -78,11 +78,11 @@ class AutonomousCar:
             prediction = self.predict_cnn(processed_img)
             cnn_speed, cnn_dir = prediction[0], prediction[1]
             
-            # 3. Lane/Track Detection (Now returns the binary mask of the 'Road')
-            lane_deviation, lane_detected, track_mask = detect_lane(frame)
+            # 3. Lane/Track Detection (Separates bright objects and white line)
+            lane_deviation, lane_detected, bright_mask, line_mask = detect_lane(frame)
             
-            # 4. Obstacle Detection (Now uses track_mask to ignore floor/edges)
-            obstacle_detected, obstacle_pos, candidates = detect_obstacle(frame, track_mask)
+            # 4. Obstacle Detection (Uses bright_mask and line_mask to find non-line objects)
+            obstacle_detected, obstacle_pos, candidates = detect_obstacle(frame, bright_mask, line_mask)
             
             # --- DECISION LOGIC ---
             final_speed = cnn_speed
@@ -96,11 +96,11 @@ class AutonomousCar:
                 # OBSTACLE AVOIDANCE: Move opposite to obstacle position
                 if obstacle_pos == 'left':
                     # Obstacle on LEFT → Move RIGHT
-                    setpoint = 0.65
+                    setpoint = -0.65
                     dodge_action = "SWERVE RIGHT (OBSTACLE LEFT)"
                 elif obstacle_pos == 'right':
                     # Obstacle on RIGHT → Move LEFT
-                    setpoint = -0.65
+                    setpoint = 0.65
                     dodge_action = "SWERVE LEFT (OBSTACLE RIGHT)"
                 elif obstacle_pos == 'center':
                     # Obstacle in CENTER → Reduce speed and stop (can't avoid)
@@ -109,7 +109,7 @@ class AutonomousCar:
                     dodge_action = "CRITICAL STOP (OBSTACLE CENTERED)"
             
             # PID CALCULATION
-            error = setpoint - lane_deviation
+            error = lane_deviation - setpoint
             pid_correction = self.pid.compute(error, dt)
             
             # Fail-safe: If the entire track is lost, emergency stop
