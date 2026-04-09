@@ -44,4 +44,4 @@ Instead of stopping, the car now uses **Setpoint Shifting** to navigate around o
     *   **60% PID Correction**: Provides industrial precision for centering and dodging.
 
 ---
-**Developed by Antigravity AI**
+
