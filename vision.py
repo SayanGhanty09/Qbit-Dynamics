@@ -45,6 +45,7 @@ def detect_obstacle(image, track_mask=None):
     """
     Detect ANY color obstacle on the track.
     Uses Hole-Filling logic to find dark objects entirely enclosed by the bright track.
+    Returns the MOST PROMINENT obstacle (largest by area) and its position.
     """
     h, w = image.shape[:2]
     roi_top = h // 2
@@ -65,7 +66,7 @@ def detect_obstacle(image, track_mask=None):
             cv2.drawContours(road_layout, [cnt], -1, 255, thickness=cv2.FILLED)
             
     # 3. Erode the road layout to create a safe zone inside the paper boundaries
-    kernel_mask = np.ones((7, 7), np.uint8) # Erase a 3-pixel border
+    kernel_mask = np.ones((3, 3), np.uint8) # Smaller kernel to preserve edge obstacles
     safe_zone = cv2.erode(road_layout, kernel_mask, iterations=1)
     
     # 4. Isolate the objects
@@ -81,22 +82,39 @@ def detect_obstacle(image, track_mask=None):
     candidates = []
     obstacle_found = False
     final_position = None
+    largest_obstacle = None
+    largest_area = 0
 
     for cnt in obs_contours:
         area = cv2.contourArea(cnt)
-        if area > 50: # Very clean mask now, can safely use a low area threshold
+        if area > 80: # Lower threshold to detect smaller obstacles like the car model
             x, y, w_obj, h_obj = cv2.boundingRect(cnt)
             y_full = y + roi_top
             
             candidates.append({'rect': (x, y_full, w_obj, h_obj), 'area': area})
             obstacle_found = True
             
-            cx = x + w_obj // 2
-            if cx < w // 3:
-                final_position = 'left'
-            elif cx > 2 * w // 3:
-                final_position = 'right'
-            else:
-                final_position = 'center'
+            # Track the largest (most prominent) obstacle
+            if area > largest_area:
+                largest_area = area
+                largest_obstacle = {
+                    'x': x,
+                    'w': w_obj,
+                    'area': area
+                }
+    
+    # Determine position based on the LARGEST obstacle
+    if largest_obstacle is not None:
+        # Use the LEFT EDGE of obstacle to determine position (more accurate than center)
+        x_left = largest_obstacle['x']
+        w_roi = current_mask.shape[1]  # Width of ROI
+        
+        # Determine which third of the frame the obstacle is in
+        if x_left < w_roi // 3:
+            final_position = 'left'
+        elif x_left > 2 * w_roi // 3:
+            final_position = 'right'
+        else:
+            final_position = 'center'
                 
     return obstacle_found, final_position, candidates

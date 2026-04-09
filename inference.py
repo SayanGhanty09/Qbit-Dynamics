@@ -90,23 +90,23 @@ class AutonomousCar:
             
             # TRACK-GUIDED DODGING
             dodge_action = ""
-            if obstacle_detected:
+            if obstacle_detected and obstacle_pos is not None:
                 final_speed = 0.35  # Safety speed during dodge
                 
-                if obstacle_pos == 'center':
-                    # ROAD-AWARE CHOICE: Swerve toward whichever side of the page has more room
-                    if lane_deviation > 0: # Car is already on the right side of the track
-                        setpoint = -0.65  # Swerve toward the left side of the page
-                        dodge_action = "SWERVE LEFT (SPACE FOUND)"
-                    else:
-                        setpoint = 0.65   # Swerve toward the right side of the page
-                        dodge_action = "SWERVE RIGHT (SPACE FOUND)"
-                elif obstacle_pos == 'left':
-                    setpoint = 0.65       # Swerve right to avoid left object
+                # OBSTACLE AVOIDANCE: Move opposite to obstacle position
+                if obstacle_pos == 'left':
+                    # Obstacle on LEFT → Move RIGHT
+                    setpoint = 0.65
                     dodge_action = "SWERVE RIGHT (OBSTACLE LEFT)"
                 elif obstacle_pos == 'right':
-                    setpoint = -0.65      # Swerve left to avoid right object
+                    # Obstacle on RIGHT → Move LEFT
+                    setpoint = -0.65
                     dodge_action = "SWERVE LEFT (OBSTACLE RIGHT)"
+                elif obstacle_pos == 'center':
+                    # Obstacle in CENTER → Reduce speed and stop (can't avoid)
+                    final_speed = 0.1  # Near-stop speed
+                    setpoint = 0.0  # Keep centered
+                    dodge_action = "CRITICAL STOP (OBSTACLE CENTERED)"
             
             # PID CALCULATION
             error = setpoint - lane_deviation
