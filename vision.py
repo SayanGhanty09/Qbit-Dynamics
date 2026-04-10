@@ -127,3 +127,35 @@ def detect_obstacle(image, foreground_mask=None, line_mask=None):
         print("[DEBUG] No obstacle found passing area threshold.")
                 
     return obstacle_found, final_position, candidates
+
+def get_path_space(line_mask, obstacle_rect):
+    """
+    Calculates the available path space (white paper) to the left and right 
+    of the obstacle relative to the detected path boundaries.
+    """
+    x, y, w_obj, h_obj = obstacle_rect
+    h_mask, w_mask = line_mask.shape
+    
+    # Sample at the middle of the obstacle's bounding box height
+    # Adjust for ROI offset if necessary (detect_obstacle uses roi_top)
+    # But here we pass the line_mask which is already the ROI or the full frame?
+    # In inference.py, line_mask is passed directly.
+    sample_y = y + h_obj // 2
+    if sample_y >= h_mask:
+        sample_y = h_mask - 1
+        
+    line_row = line_mask[sample_y, :]
+    white_indices = np.where(line_row > 0)[0]
+    
+    if len(white_indices) == 0:
+        # Fallback if no path at this row: use frame boundaries
+        return x, w_mask - (x + w_obj), 0, w_mask
+        
+    path_start = white_indices[0]
+    path_end = white_indices[-1]
+    
+    # Measure free space within the path boundaries
+    left_space = max(0, x - path_start)
+    right_space = max(0, path_end - (x + w_obj))
+    
+    return left_space, right_space, path_start, path_end

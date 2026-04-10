@@ -2,7 +2,7 @@ import cv2
 import numpy as np
 import tensorflow as tf
 import time
-from vision import preprocess_image, detect_lane, detect_obstacle
+from vision import preprocess_image, detect_lane, detect_obstacle, get_path_space
 
 class PIDController:
     def __init__(self, kp, ki, kd):
@@ -90,6 +90,8 @@ class AutonomousCar:
             
             # TRACK-GUIDED DODGING
             dodge_action = ""
+            space_info = None  # (l_space, r_space, p_start, p_end, obs_rect)
+            
             if obstacle_detected and obstacle_pos is not None:
                 final_speed = 0.35  # Safety speed during dodge
                 
@@ -103,10 +105,22 @@ class AutonomousCar:
                     setpoint = 0.65
                     dodge_action = "SWERVE LEFT (OBSTACLE RIGHT)"
                 elif obstacle_pos == 'center':
-                    # Obstacle in CENTER -> Dodge slowly instead of stopping
-                    final_speed = 0.2  # Move slowly
-                    setpoint = -0.65  # Default to swerving right
-                    dodge_action = "SWERVE RIGHT (OBSTACLE CENTER)"
+                    # DYNAMIC DODGING: Check which side has more space
+                    # We use the largest obstacle for space calculation
+                    largest_cand = max(candidates, key=lambda c: c['area'])
+                    obs_rect = largest_cand['rect']
+                    
+                    l_space, r_space, p_start, p_end = get_path_space(line_mask, obs_rect)
+                    space_info = (l_space, r_space, p_start, p_end, obs_rect)
+                    
+                    if l_space > r_space:
+                        setpoint = 0.7  # Swerve Left
+                        dodge_action = f"DODGE L (SPACE: {l_space} > {r_space})"
+                    else:
+                        setpoint = -0.7  # Swerve Right
+                        dodge_action = f"DODGE R (SPACE: {r_space} > {l_space})"
+                    
+                    final_speed = 0.25  # Move slowly during dynamic dodge
             
             # PID CALCULATION
             error = lane_deviation - setpoint
@@ -122,7 +136,7 @@ class AutonomousCar:
             final_dir = (0.4 * cnn_dir) + (0.6 * pid_correction)
             final_dir = max(min(final_dir, 1.0), -1.0)
                 
-            return [float(final_speed), float(final_dir), obstacle_detected, candidates, dodge_action]
+            return [float(final_speed), float(final_dir), obstacle_detected, candidates, dodge_action, space_info]
             
         except Exception as e:
             print(f"Decision logic error: {e}")
@@ -147,7 +161,7 @@ def main():
             return
             
         control_vector = car.hybrid_control(frame)
-        speed, direction, obstacle_detected, candidates, dodge_action = control_vector
+        speed, direction, obstacle_detected, candidates, dodge_action, space_info = control_vector
         print("\n--- INFERENCE RESULT ---")
         print(f"AI Speed: {speed:.4f}")
         print(f"AI Direction: {direction:.4f}")
@@ -176,7 +190,7 @@ def main():
                 
             # Run Hybrid Decision Logic
             control_vector = car.hybrid_control(frame)
-            speed, direction, obstacle_detected, candidates, dodge_action = control_vector
+            speed, direction, obstacle_detected, candidates, dodge_action, space_info = control_vector
             
             # Calculate Latency
             latency = (time.time() - start_time) * 1000
@@ -220,6 +234,27 @@ def main():
                 # Show the AI's Logic/Prediction
                 cv2.putText(frame, dodge_action, (50, 180), 
                             cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 255), 2)
+            
+            # Space Visualization (Box showing the gap)
+            if space_info is not None:
+                l_space, r_space, p_start, p_end, obs_rect = space_info
+                ox, oy, ow, oh = obs_rect
+                
+                # Draw the path boundaries for reference (Cyan)
+                cv2.line(frame, (p_start, oy), (p_start, oy + oh), (255, 255, 0), 2)
+                cv2.line(frame, (p_end, oy), (p_end, oy + oh), (255, 255, 0), 2)
+                
+                # Draw Left Gap Box (Cyan)
+                if l_space > 0:
+                    cv2.rectangle(frame, (p_start, oy), (ox, oy + oh), (255, 255, 0), 1)
+                    cv2.putText(frame, f"L:{l_space}", (p_start + 5, oy + 20), 
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 1)
+                
+                # Draw Right Gap Box (Magenta)
+                if r_space > 0:
+                    cv2.rectangle(frame, (ox + ow, oy), (p_end, oy + oh), (255, 0, 255), 1)
+                    cv2.putText(frame, f"R:{r_space}", (ox + ow + 5, oy + 20), 
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 255), 1)
             
             cv2.imshow("Original Frame", frame)
             if cv2.waitKey(1) & 0xFF == ord('q'):
