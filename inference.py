@@ -103,10 +103,10 @@ class AutonomousCar:
                     setpoint = 0.65
                     dodge_action = "SWERVE LEFT (OBSTACLE RIGHT)"
                 elif obstacle_pos == 'center':
-                    # Obstacle in CENTER → Reduce speed and stop (can't avoid)
-                    final_speed = 0.1  # Near-stop speed
-                    setpoint = 0.0  # Keep centered
-                    dodge_action = "CRITICAL STOP (OBSTACLE CENTERED)"
+                    # Obstacle in CENTER -> Dodge slowly instead of stopping
+                    final_speed = 0.2  # Move slowly
+                    setpoint = -0.65  # Default to swerving right
+                    dodge_action = "SWERVE RIGHT (OBSTACLE CENTER)"
             
             # PID CALCULATION
             error = lane_deviation - setpoint
